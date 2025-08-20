@@ -486,55 +486,75 @@
 
             extractSkinTone(imageData) {
                 const data = imageData.data;
-                const centerX = Math.floor(imageData.width / 2);
-                const centerY = Math.floor(imageData.height / 2);
-                const sampleSize = 60;
+                const width = imageData.width;
+                const height = imageData.height;
                 
-                let totalR = 0, totalG = 0, totalB = 0, count = 0;
-                let samples = [];
+                // Use multiple sampling areas for better accuracy
+                const samples = [];
+                const sampleAreas = [
+                    { x: width * 0.4, y: height * 0.3, size: 40 }, // Left cheek area
+                    { x: width * 0.6, y: height * 0.3, size: 40 }, // Right cheek area
+                    { x: width * 0.5, y: height * 0.4, size: 30 }, // Center face area
+                    { x: width * 0.45, y: height * 0.35, size: 25 }, // Left forehead
+                    { x: width * 0.55, y: height * 0.35, size: 25 }  // Right forehead
+                ];
                 
-                // Sample from center area of image (likely to contain face)
-                for (let y = centerY - sampleSize; y < centerY + sampleSize; y++) {
-                    for (let x = centerX - sampleSize; x < centerX + sampleSize; x++) {
-                        const index = (y * imageData.width + x) * 4;
-                        if (index < data.length) {
-                            const r = data[index];
-                            const g = data[index + 1];
-                            const b = data[index + 2];
-                            
-                            // Filter out very bright or very dark pixels
-                            const brightness = (r + g + b) / 3;
-                            if (brightness > 60 && brightness < 220) {
-                                totalR += r;
-                                totalG += g;
-                                totalB += b;
-                                samples.push({ r, g, b });
-                                count++;
+                sampleAreas.forEach(area => {
+                    let totalR = 0, totalG = 0, totalB = 0, count = 0;
+                    
+                    for (let y = Math.max(0, area.y - area.size); y < Math.min(height, area.y + area.size); y++) {
+                        for (let x = Math.max(0, area.x - area.size); x < Math.min(width, area.x + area.size); x++) {
+                            const index = (Math.floor(y) * width + Math.floor(x)) * 4;
+                            if (index < data.length - 3) {
+                                const r = data[index];
+                                const g = data[index + 1];
+                                const b = data[index + 2];
+                                
+                                // More selective filtering for skin tones
+                                const brightness = (r + g + b) / 3;
+                                const isValidSkinTone = this.isValidSkinPixel(r, g, b, brightness);
+                                
+                                if (isValidSkinTone) {
+                                    totalR += r;
+                                    totalG += g;
+                                    totalB += b;
+                                    count++;
+                                }
                             }
                         }
                     }
-                }
-                
-                if (count === 0) {
-                    // Fallback: use entire image
-                    for (let i = 0; i < data.length; i += 4) {
-                        const r = data[i];
-                        const g = data[i + 1];
-                        const b = data[i + 2];
-                        totalR += r;
-                        totalG += g;
-                        totalB += b;
-                        samples.push({ r, g, b });
-                        count++;
+                    
+                    if (count > 0) {
+                        samples.push({
+                            r: totalR / count,
+                            g: totalG / count,
+                            b: totalB / count,
+                            weight: count
+                        });
                     }
-                    count /= 4;
+                });
+                
+                // Weighted average of all samples
+                let totalR = 0, totalG = 0, totalB = 0, totalWeight = 0;
+                samples.forEach(sample => {
+                    totalR += sample.r * sample.weight;
+                    totalG += sample.g * sample.weight;
+                    totalB += sample.b * sample.weight;
+                    totalWeight += sample.weight;
+                });
+                
+                if (totalWeight === 0) {
+                    // Fallback to center area if no valid samples
+                    return this.fallbackSkinDetection(data, width, height);
                 }
                 
                 const avgColor = {
-                    r: Math.round(totalR / count),
-                    g: Math.round(totalG / count),
-                    b: Math.round(totalB / count)
+                    r: Math.round(totalR / totalWeight),
+                    g: Math.round(totalG / totalWeight),
+                    b: Math.round(totalB / totalWeight)
                 };
+                
+                console.log('Detected skin color:', avgColor); // Debug output
                 
                 // Calculate depth (overall lightness/darkness)
                 const depth = this.calculateDepth(avgColor);
@@ -542,10 +562,61 @@
                 // Calculate undertone (warm/cool/neutral bias)
                 const undertone = this.calculateUndertone(avgColor);
                 
+                console.log('Depth:', depth, 'Undertone:', undertone); // Debug output
+                
                 return {
                     ...avgColor,
                     depth: depth,
                     undertone: undertone
+                };
+            }
+
+            isValidSkinPixel(r, g, b, brightness) {
+                // More sophisticated skin tone detection
+                if (brightness < 40 || brightness > 240) return false;
+                
+                // Check for skin-like color ratios
+                const redRatio = r / (r + g + b);
+                const greenRatio = g / (r + g + b);
+                const blueRatio = b / (r + g + b);
+                
+                // Skin tones typically have these characteristics
+                const validRedRange = redRatio > 0.3 && redRatio < 0.5;
+                const validGreenRange = greenRatio > 0.25 && greenRatio < 0.45;
+                const validBlueRange = blueRatio > 0.15 && blueRatio < 0.35;
+                
+                // Additional checks for common skin tone patterns
+                const rMinusG = r - g;
+                const gMinusB = g - b;
+                
+                return validRedRange && validGreenRange && validBlueRange && 
+                       rMinusG > -20 && gMinusB > -10;
+            }
+
+            fallbackSkinDetection(data, width, height) {
+                // Simple center-based detection as fallback
+                const centerX = Math.floor(width / 2);
+                const centerY = Math.floor(height / 2);
+                const sampleSize = 60;
+                
+                let totalR = 0, totalG = 0, totalB = 0, count = 0;
+                
+                for (let y = centerY - sampleSize; y < centerY + sampleSize; y++) {
+                    for (let x = centerX - sampleSize; x < centerX + sampleSize; x++) {
+                        if (y >= 0 && y < height && x >= 0 && x < width) {
+                            const index = (y * width + x) * 4;
+                            totalR += data[index];
+                            totalG += data[index + 1];
+                            totalB += data[index + 2];
+                            count++;
+                        }
+                    }
+                }
+                
+                return {
+                    r: Math.round(totalR / count),
+                    g: Math.round(totalG / count),
+                    b: Math.round(totalB / count)
                 };
             }
 
