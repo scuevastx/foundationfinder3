@@ -37,19 +37,10 @@
             gap: 15px;
         }
 
-        .logo-symbol {
-            font-size: 4rem;
-            font-weight: 300;
-            color: #000000;
-            font-family: 'Georgia', serif;
-        }
-
-        .brand-name {
-            font-size: 2rem;
-            font-weight: 300;
-            color: #000000;
-            letter-spacing: 4px;
-            text-transform: uppercase;
+        .logo-image {
+            max-width: 400px;
+            width: 100%;
+            height: auto;
         }
 
         .tool-name {
@@ -66,7 +57,6 @@
             grid-template-columns: 1fr 1fr;
             gap: 0;
             height: 500px;
-            border: 2px solid #000000;
             margin-bottom: 40px;
         }
 
@@ -76,9 +66,20 @@
             overflow: hidden;
         }
 
+        /* Fallback if image doesn't load */
+        .showcase-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+            z-index: -1;
+        }
+
         .camera-section {
             background: #ffffff;
-            border-left: 2px solid #000000;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -328,8 +329,6 @@
             }
             
             .camera-section {
-                border-left: none;
-                border-top: 2px solid #000000;
                 min-height: 400px;
             }
             
@@ -359,8 +358,7 @@
     <div class="main-container">
         <div class="header">
             <div class="logo-container">
-                <div class="logo-symbol">d&n</div>
-                <div class="brand-name">DANESSA MYRICKS BEAUTY</div>
+                <img src="./primarylogo.png" alt="Danessa Myricks Beauty" class="logo-image">
                 <div class="tool-name">SHADEMATCHING TOOL</div>
             </div>
         </div>
@@ -369,7 +367,8 @@
             <div class="showcase-section"></div>
             <div class="camera-section">
                 <div class="camera-placeholder" id="cameraPlaceholder">
-                    <img src="./startcamera.png" alt="Start Camera" style="max-width: 200px; opacity: 0.8;">
+                    <img src="./startcamera.png" alt="Get Started Below" style="max-width: 200px; opacity: 0.8;">
+                    <div style="margin-top: 15px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Get Started Below</div>
                 </div>
                 <video id="video" autoplay playsinline></video>
                 <canvas id="canvas"></canvas>
@@ -551,7 +550,9 @@
 
             calculateDepth(color) {
                 // Use luminance formula for perceptual brightness
-                return (0.299 * color.r + 0.587 * color.g + 0.114 * color.b) / 255;
+                // Apply 5% lighter adjustment to compensate for typical camera darkness
+                const rawDepth = (0.299 * color.r + 0.587 * color.g + 0.114 * color.b) / 255;
+                return Math.min(1.0, rawDepth + 0.05); // Add 5% brightness, cap at 100%
             }
 
             calculateUndertone(color) {
